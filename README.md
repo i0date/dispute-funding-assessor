@@ -1,5 +1,7 @@
 # Dispute Funding Assessor
 
+**[→ Live demo](https://dispute-funding-assessor.vercel.app)**
+
 A portfolio scoring tool that treats open chargeback claims as a financial asset class — scoring each claim for fundability and generating a portfolio-level advance recommendation.
 
 Built from five years of fraud and risk operations experience at Canadian fintechs and banks.
