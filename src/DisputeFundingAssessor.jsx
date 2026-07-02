@@ -344,7 +344,7 @@ export default function DisputeFundingAssessor() {
       </div>
 
       {/* ── CSV upload bar ── */}
-      <div className="mb-5 flex items-center gap-3 p-3 border border-dashed border-gray-200 rounded-xl bg-gray-50">
+      <div className="mb-5 flex flex-wrap items-center gap-3 p-3 border border-dashed border-gray-200 rounded-xl bg-gray-50">
         <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={handleFile} />
 
         <button
@@ -388,7 +388,7 @@ export default function DisputeFundingAssessor() {
       )}
 
       {/* ── KPI cards ── */}
-      <div className="grid grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         {[
           { label: "Portfolio value",      value: `$${totalValue.toLocaleString()}`,                     sub: `${allScored.length} claims`                                       },
           { label: "Expected recovery",    value: `$${Math.round(totalExpected).toLocaleString()}`,      sub: `${Math.round(totalExpected / totalValue * 100)}% of face value`   },
@@ -404,7 +404,7 @@ export default function DisputeFundingAssessor() {
       </div>
 
       {/* ── Table + detail panel ── */}
-      <div className="flex gap-4 items-start">
+      <div className="flex flex-col md:flex-row gap-4 items-start">
 
         {/* Claims table */}
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -482,7 +482,7 @@ export default function DisputeFundingAssessor() {
           ].filter(e => e.active)
 
           return (
-            <div style={{ width: 320, flexShrink: 0 }} className="border border-gray-200 rounded-xl p-4">
+            <div className="w-full md:w-80 md:flex-shrink-0 border border-gray-200 rounded-xl p-4">
 
               {/* Panel header */}
               <div className="flex items-start justify-between mb-3">
@@ -563,7 +563,7 @@ export default function DisputeFundingAssessor() {
       {/* ── Scoring methodology note ── */}
       <div className="mt-6 pt-3 border-t border-gray-100">
         <p className="text-xs text-gray-400 mb-2 font-medium">Scoring model</p>
-        <div className="grid grid-cols-3 gap-3 text-xs text-gray-400">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs text-gray-400">
           <p><span className="font-medium text-gray-500">Recovery probability (55%)</span> — reason code base win rate adjusted for AVS mismatch, 3DS absence, delivery confirmation, merchant acknowledgement, PIN verification, VFMP enrollment, documentation quality, prior claim history, and merchant chargeback ratio.</p>
           <p><span className="font-medium text-gray-500">Time value (25%)</span> — days remaining in the filing window. Claims inside 30 days carry a material discount; inside 15 days are severely penalized. Visa standard window is 120 days; fraud codes (10.x) extend to 540 in some jurisdictions.</p>
           <p><span className="font-medium text-gray-500">Amount efficiency (20%)</span> — funder overhead is roughly fixed per claim. Sub-$100 claims rarely justify the cost. Amounts over $2,000 introduce concentration risk. Sweet spot is $200–$2,000. Portfolio-level advance rates: A (65%) / B (55%) / C (44%) / D (30%) of expected recovery.</p>
