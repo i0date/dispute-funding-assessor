@@ -1,27 +1,39 @@
-import { useState, useMemo } from "react"
-import { ChevronDown, ChevronUp, CheckCircle, XCircle, AlertTriangle } from "lucide-react"
+import { useState, useMemo, useRef } from "react"
+import { ChevronDown, ChevronUp, CheckCircle, XCircle, AlertTriangle, Upload, Download } from "lucide-react"
 
 // ─── Reason code base win rates (issuer perspective, Visa dispute outcome data) ───
 const BASE_WIN_RATES = {
-  "10.1": 0.85, // EMV liability shift — near automatic
-  "10.2": 0.48, // No cardholder auth (card present) — mixed, PIN exposure weakens issuer
-  "10.4": 0.76, // CNP fraud — strong for issuer absent 3DS
-  "10.5": 0.93, // VFMP enrolled merchant — near automatic liability shift
-  "13.1": 0.41, // Merchandise not received — moderate, delivery evidence often rebutted
-  "13.3": 0.30, // Not as described — weakest, highly subjective
-  "13.5": 0.57, // Misrepresentation — moderate, depends on documentation quality
-  "13.6": 0.68, // Credit not processed — strong when merchant acknowledges
-  "13.7": 0.44, // Cancelled merchandise / services
+  "10.1": 0.85,
+  "10.2": 0.48,
+  "10.4": 0.76,
+  "10.5": 0.93,
+  "13.1": 0.41,
+  "13.3": 0.30,
+  "13.5": 0.57,
+  "13.6": 0.68,
+  "13.7": 0.44,
 }
 
-// ─── Sample portfolio ─────────────────────────────────────────────────────────────
+const CODE_LABELS = {
+  "10.1": "EMV liability shift",
+  "10.2": "No cardholder auth (card present)",
+  "10.4": "CNP fraud — other",
+  "10.5": "Visa fraud monitoring program",
+  "13.1": "Merchandise not received",
+  "13.3": "Not as described",
+  "13.5": "Misrepresentation",
+  "13.6": "Credit not processed",
+  "13.7": "Cancelled merchandise / services",
+}
+
+// ─── Sample portfolio ─────────────────────────────────────────────────────────
 const CLAIMS_DATA = [
   {
     id: "DSP-001", code: "10.4", codeLabel: "CNP fraud — other",
     amount: 850, filedDaysAgo: 10, windowDays: 120,
     avsMismatch: true, no3DS: true, deliveryConf: false,
     merchantAck: false, pinVerified: false, isVFMP: false, strongDocs: false,
-    merchantCBR: 1.2, priorClaims: 0,
+    merchantCBR: 1.2, priorClaims: 0, source: "sample",
     note: "No 3DS, AVS mismatch on shipping address. Clean account history. Strong CNP fraud pattern — issuer holds the stronger hand.",
   },
   {
@@ -29,7 +41,7 @@ const CLAIMS_DATA = [
     amount: 320, filedDaysAgo: 25, windowDays: 120,
     avsMismatch: false, no3DS: false, deliveryConf: true,
     merchantAck: false, pinVerified: false, isVFMP: false, strongDocs: false,
-    merchantCBR: 0.4, priorClaims: 1,
+    merchantCBR: 0.4, priorClaims: 1, source: "sample",
     note: "Delivery confirmation on file. Low-CBR merchant will likely representment aggressively. One prior dispute on account reduces confidence.",
   },
   {
@@ -37,7 +49,7 @@ const CLAIMS_DATA = [
     amount: 2200, filedDaysAgo: 5, windowDays: 120,
     avsMismatch: true, no3DS: true, deliveryConf: false,
     merchantAck: false, pinVerified: false, isVFMP: true, strongDocs: false,
-    merchantCBR: 2.8, priorClaims: 0,
+    merchantCBR: 2.8, priorClaims: 0, source: "sample",
     note: "VFMP-enrolled merchant — near-automatic liability shift regardless of dispute code. High merchant CBR confirms systemic fraud pattern. Strongest claim in portfolio.",
   },
   {
@@ -45,7 +57,7 @@ const CLAIMS_DATA = [
     amount: 180, filedDaysAgo: 40, windowDays: 120,
     avsMismatch: false, no3DS: false, deliveryConf: false,
     merchantAck: false, pinVerified: false, isVFMP: false, strongDocs: false,
-    merchantCBR: 0.6, priorClaims: 2,
+    merchantCBR: 0.6, priorClaims: 2, source: "sample",
     note: "Subjective quality dispute with no supporting documentation. Two prior claims on account is a significant red flag. 80 days remaining, but low confidence regardless.",
   },
   {
@@ -53,7 +65,7 @@ const CLAIMS_DATA = [
     amount: 650, filedDaysAgo: 15, windowDays: 120,
     avsMismatch: false, no3DS: false, deliveryConf: false,
     merchantAck: false, pinVerified: true, isVFMP: false, strongDocs: false,
-    merchantCBR: 0.8, priorClaims: 0,
+    merchantCBR: 0.8, priorClaims: 0, source: "sample",
     note: "Chip + PIN transaction. PIN verification shifts liability back to the issuer under Visa rules — near-automatic loss at representment. Cardholder claims card was lost before transaction.",
   },
   {
@@ -61,7 +73,7 @@ const CLAIMS_DATA = [
     amount: 420, filedDaysAgo: 20, windowDays: 120,
     avsMismatch: false, no3DS: false, deliveryConf: false,
     merchantAck: true, pinVerified: false, isVFMP: false, strongDocs: true,
-    merchantCBR: 0.5, priorClaims: 0,
+    merchantCBR: 0.5, priorClaims: 0, source: "sample",
     note: "Merchant acknowledged credit owed in writing. Strong paper trail. Clean account history. Near-certain win — merchant acknowledgement rarely survives representment scrutiny.",
   },
   {
@@ -69,7 +81,7 @@ const CLAIMS_DATA = [
     amount: 95, filedDaysAgo: 50, windowDays: 120,
     avsMismatch: false, no3DS: false, deliveryConf: false,
     merchantAck: false, pinVerified: false, isVFMP: false, strongDocs: false,
-    merchantCBR: 0.9, priorClaims: 1,
+    merchantCBR: 0.9, priorClaims: 1, source: "sample",
     note: "Small amount at 70-day mark. Limited fraud evidence and one prior claim lower confidence. Marginal for inclusion — funder overhead may exceed expected return.",
   },
   {
@@ -77,12 +89,12 @@ const CLAIMS_DATA = [
     amount: 1100, filedDaysAgo: 8, windowDays: 120,
     avsMismatch: false, no3DS: false, deliveryConf: false,
     merchantAck: false, pinVerified: false, isVFMP: false, strongDocs: true,
-    merchantCBR: 0.7, priorClaims: 0,
+    merchantCBR: 0.7, priorClaims: 0, source: "sample",
     note: "Strong documentary evidence — screenshots of merchant listing vs. item received. Early in filing window, clean account history. Misrepresentation is winnable with documentation quality like this.",
   },
 ]
 
-// ─── Scoring model ────────────────────────────────────────────────────────────────
+// ─── Scoring model ────────────────────────────────────────────────────────────
 
 function computeRecoveryProb(c) {
   let p = BASE_WIN_RATES[c.code] ?? 0.50
@@ -117,18 +129,114 @@ function computeAmountScore(amount) {
 }
 
 function scoreClaim(c) {
-  const recoveryProb  = computeRecoveryProb(c)
-  const timeScore     = computeTimeScore(c)
-  const amountScore   = computeAmountScore(c.amount)
-  const fundability   = Math.round((recoveryProb * 0.55 + timeScore * 0.25 + amountScore * 0.20) * 100)
+  const recoveryProb     = computeRecoveryProb(c)
+  const timeScore        = computeTimeScore(c)
+  const amountScore      = computeAmountScore(c.amount)
+  const fundability      = Math.round((recoveryProb * 0.55 + timeScore * 0.25 + amountScore * 0.20) * 100)
   const expectedRecovery = c.amount * recoveryProb * timeScore
   return { recoveryProb, timeScore, amountScore, fundability, expectedRecovery }
 }
 
-// ─── Pre-score all claims ─────────────────────────────────────────────────────────
-const SCORED = CLAIMS_DATA.map(c => ({ ...c, ...scoreClaim(c) }))
+// ─── Pre-score sample claims ──────────────────────────────────────────────────
+const SCORED_SAMPLE = CLAIMS_DATA.map(c => ({ ...c, ...scoreClaim(c) }))
 
-// ─── Grade helpers ────────────────────────────────────────────────────────────────
+// ─── CSV utilities ────────────────────────────────────────────────────────────
+
+const TEMPLATE_HEADERS = [
+  "id", "code", "amount", "filed_days_ago", "window_days",
+  "avs_mismatch", "no_3ds", "delivery_confirmed", "merchant_acknowledged",
+  "pin_verified", "vfmp_enrolled", "strong_docs", "merchant_cbr", "prior_claims", "note",
+]
+
+const TEMPLATE_EXAMPLE_ROW = [
+  "DSP-009", "10.4", "750", "15", "120",
+  "yes", "yes", "no", "no",
+  "no", "no", "no", "1.1", "0", "CNP fraud — AVS mismatch on shipping address",
+]
+
+function parseBool(v) {
+  if (!v) return false
+  return ["yes", "true", "1", "y"].includes(v.toLowerCase().trim())
+}
+
+function parseCSVLine(line) {
+  const result = []
+  let current = ""
+  let inQuotes = false
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i]
+    if (ch === '"') {
+      inQuotes = !inQuotes
+    } else if (ch === "," && !inQuotes) {
+      result.push(current)
+      current = ""
+    } else {
+      current += ch
+    }
+  }
+  result.push(current)
+  return result
+}
+
+function parseCSVText(text) {
+  const lines = text.trim().split(/\r?\n/)
+  if (lines.length < 2) return { claims: [], errors: ["CSV must have a header row and at least one data row."] }
+
+  const headers = lines[0].split(",").map(h => h.trim().toLowerCase().replace(/\s+/g, "_"))
+  const errors = []
+  const claims = []
+
+  for (let i = 1; i < lines.length; i++) {
+    if (!lines[i].trim()) continue
+    const cols = parseCSVLine(lines[i])
+    const row = {}
+    headers.forEach((h, idx) => { row[h] = (cols[idx] || "").trim() })
+
+    const code = (row.code || "").trim()
+    if (!code) { errors.push(`Row ${i + 1}: missing reason code — skipped`); continue }
+
+    const amount = parseFloat(row.amount)
+    if (isNaN(amount) || amount <= 0) { errors.push(`Row ${i + 1}: invalid amount "${row.amount}" — skipped`); continue }
+
+    const filedDaysAgo = parseInt(row.filed_days_ago || "0", 10)
+    const windowDays   = parseInt(row.window_days || "120", 10)
+
+    claims.push({
+      id:           row.id || `UPL-${String(i).padStart(3, "0")}`,
+      code,
+      codeLabel:    CODE_LABELS[code] || `Code ${code}`,
+      amount,
+      filedDaysAgo: isNaN(filedDaysAgo) ? 0 : filedDaysAgo,
+      windowDays:   isNaN(windowDays) ? 120 : windowDays,
+      avsMismatch:  parseBool(row.avs_mismatch),
+      no3DS:        parseBool(row.no_3ds),
+      deliveryConf: parseBool(row.delivery_confirmed),
+      merchantAck:  parseBool(row.merchant_acknowledged),
+      pinVerified:  parseBool(row.pin_verified),
+      isVFMP:       parseBool(row.vfmp_enrolled),
+      strongDocs:   parseBool(row.strong_docs),
+      merchantCBR:  parseFloat(row.merchant_cbr || "0.5") || 0.5,
+      priorClaims:  parseInt(row.prior_claims || "0", 10) || 0,
+      note:         row.note || "",
+      source:       "uploaded",
+    })
+  }
+
+  return { claims, errors }
+}
+
+function downloadTemplate() {
+  const rows = [TEMPLATE_HEADERS.join(","), TEMPLATE_EXAMPLE_ROW.join(",")]
+  const blob = new Blob([rows.join("\n")], { type: "text/csv" })
+  const url  = URL.createObjectURL(blob)
+  const a    = document.createElement("a")
+  a.href     = url
+  a.download = "dispute_portfolio_template.csv"
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+// ─── Grade helpers ────────────────────────────────────────────────────────────
 function grade(score) {
   if (score >= 75) return { label: "A", pill: "text-green-700 bg-green-50 border-green-200",  bar: "bg-green-400"  }
   if (score >= 60) return { label: "B", pill: "text-blue-700 bg-blue-50 border-blue-200",    bar: "bg-blue-400"   }
@@ -144,36 +252,62 @@ function ScoreBar({ value, color, height = "h-1.5" }) {
   )
 }
 
-// ─── Main component ───────────────────────────────────────────────────────────────
+// ─── Main component ───────────────────────────────────────────────────────────
 export default function DisputeFundingAssessor() {
-  const [selected, setSelected]   = useState(null)
-  const [sortCol, setSortCol]     = useState("fundability")
-  const [sortDir, setSortDir]     = useState("desc")
+  const [selected, setSelected]         = useState(null)
+  const [sortCol, setSortCol]           = useState("fundability")
+  const [sortDir, setSortDir]           = useState("desc")
+  const [uploadedClaims, setUploaded]   = useState([])
+  const [parseErrors, setParseErrors]   = useState([])
+  const fileRef = useRef(null)
 
   function handleSort(col) {
     if (sortCol === col) setSortDir(d => d === "desc" ? "asc" : "desc")
     else { setSortCol(col); setSortDir("desc") }
   }
 
+  function handleFile(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      const { claims, errors } = parseCSVText(ev.target.result)
+      setUploaded(claims.map(c => ({ ...c, ...scoreClaim(c) })))
+      setParseErrors(errors)
+      setSelected(null)
+    }
+    reader.readAsText(file)
+    e.target.value = ""
+  }
+
+  function clearUploaded() {
+    setUploaded([])
+    setParseErrors([])
+    setSelected(null)
+  }
+
+  // ── Combine sample + uploaded ──────────────────────────────────────────────
+  const allScored = useMemo(() => [...SCORED_SAMPLE, ...uploadedClaims], [uploadedClaims])
+
   const sorted = useMemo(() => {
-    return [...SCORED].sort((a, b) => {
+    return [...allScored].sort((a, b) => {
       const v = c => sortCol === "amount" ? c.amount : sortCol === "expectedRecovery" ? c.expectedRecovery : c.fundability
       return sortDir === "desc" ? v(b) - v(a) : v(a) - v(b)
     })
-  }, [sortCol, sortDir])
+  }, [allScored, sortCol, sortDir])
 
-  // ── Portfolio metrics ──────────────────────────────────────────────────────────
-  const totalValue        = SCORED.reduce((s, c) => s + c.amount, 0)
-  const totalExpected     = SCORED.reduce((s, c) => s + c.expectedRecovery, 0)
-  const weightedScore     = SCORED.reduce((s, c) => s + c.fundability * c.amount, 0) / totalValue
-  const topShare          = Math.max(...SCORED.map(c => c.amount)) / totalValue
-  const concPenalty       = topShare > 0.35 ? 4 : 0
-  const portfolioScore    = Math.round(weightedScore - concPenalty)
-  const pg                = grade(portfolioScore)
-  const advanceRate       = portfolioScore >= 75 ? 0.65 : portfolioScore >= 60 ? 0.55 : portfolioScore >= 45 ? 0.44 : 0.30
-  const advanceValue      = totalExpected * advanceRate
+  // ── Portfolio metrics (across all claims) ──────────────────────────────────
+  const totalValue     = allScored.reduce((s, c) => s + c.amount, 0)
+  const totalExpected  = allScored.reduce((s, c) => s + c.expectedRecovery, 0)
+  const weightedScore  = allScored.reduce((s, c) => s + c.fundability * c.amount, 0) / totalValue
+  const topShare       = Math.max(...allScored.map(c => c.amount)) / totalValue
+  const concPenalty    = topShare > 0.35 ? 4 : 0
+  const portfolioScore = Math.round(weightedScore - concPenalty)
+  const pg             = grade(portfolioScore)
+  const advanceRate    = portfolioScore >= 75 ? 0.65 : portfolioScore >= 60 ? 0.55 : portfolioScore >= 45 ? 0.44 : 0.30
+  const advanceValue   = totalExpected * advanceRate
 
-  const sc = selected ? SCORED.find(c => c.id === selected) : null
+  const sc = selected ? allScored.find(c => c.id === selected) : null
 
   function SortBtn({ col, label }) {
     const active = sortCol === col
@@ -192,39 +326,74 @@ export default function DisputeFundingAssessor() {
     <div className="p-5 max-w-5xl mx-auto text-sm font-sans">
 
       {/* ── Header ── */}
-      <div className="flex items-start justify-between mb-5">
+      <div className="flex items-start justify-between mb-4">
         <div>
           <p className="text-xs text-gray-400 uppercase tracking-widest mb-1">Dispute funding assessment</p>
-          <h1 className="text-xl font-medium text-gray-900">{SCORED.length} open claims — portfolio analysis</h1>
+          <h1 className="text-xl font-medium text-gray-900">
+            {allScored.length} open claim{allScored.length !== 1 ? "s" : ""} — portfolio analysis
+            {uploadedClaims.length > 0 && (
+              <span className="ml-2 text-xs font-normal text-gray-400">
+                ({SCORED_SAMPLE.length} sample · {uploadedClaims.length} uploaded)
+              </span>
+            )}
+          </h1>
         </div>
         <div className={`border rounded-xl px-4 py-2 text-2xl font-medium ${pg.pill}`}>
           {pg.label}
         </div>
       </div>
 
+      {/* ── CSV upload bar ── */}
+      <div className="mb-5 flex items-center gap-3 p-3 border border-dashed border-gray-200 rounded-xl bg-gray-50">
+        <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={handleFile} />
+
+        <button
+          onClick={() => fileRef.current?.click()}
+          className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-white border border-gray-200 text-gray-600 hover:border-gray-300 hover:text-gray-800 transition-colors"
+        >
+          <Upload className="w-3.5 h-3.5" />
+          Upload portfolio CSV
+        </button>
+
+        <button
+          onClick={downloadTemplate}
+          className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-white border border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700 transition-colors"
+        >
+          <Download className="w-3.5 h-3.5" />
+          Download template
+        </button>
+
+        {uploadedClaims.length > 0 && (
+          <div className="flex items-center gap-2 ml-auto">
+            <span className="text-xs text-gray-500">{uploadedClaims.length} claim{uploadedClaims.length !== 1 ? "s" : ""} loaded</span>
+            <button onClick={clearUploaded} className="text-xs text-gray-400 hover:text-gray-600 transition-colors">clear</button>
+          </div>
+        )}
+
+        {uploadedClaims.length === 0 && parseErrors.length === 0 && (
+          <span className="text-xs text-gray-400 ml-auto">
+            Upload your own claims — they'll be scored alongside the sample data
+          </span>
+        )}
+      </div>
+
+      {/* ── Parse errors ── */}
+      {parseErrors.length > 0 && (
+        <div className="mb-4 p-3 border border-amber-200 bg-amber-50 rounded-xl">
+          <p className="text-xs font-medium text-amber-700 mb-1">Some rows were skipped</p>
+          {parseErrors.map((e, i) => (
+            <p key={i} className="text-xs text-amber-600">{e}</p>
+          ))}
+        </div>
+      )}
+
       {/* ── KPI cards ── */}
       <div className="grid grid-cols-4 gap-3 mb-6">
         {[
-          {
-            label: "Portfolio value",
-            value: `$${totalValue.toLocaleString()}`,
-            sub: `${SCORED.length} claims`,
-          },
-          {
-            label: "Expected recovery",
-            value: `$${Math.round(totalExpected).toLocaleString()}`,
-            sub: `${Math.round(totalExpected / totalValue * 100)}% of face value`,
-          },
-          {
-            label: "Recommended advance",
-            value: `$${Math.round(advanceValue).toLocaleString()}`,
-            sub: `${Math.round(advanceRate * 100)}% of expected recovery`,
-          },
-          {
-            label: "Portfolio fundability",
-            value: `${portfolioScore} / 100`,
-            sub: concPenalty > 0 ? `−${concPenalty} concentration penalty` : "no concentration risk",
-          },
+          { label: "Portfolio value",      value: `$${totalValue.toLocaleString()}`,                     sub: `${allScored.length} claims`                                       },
+          { label: "Expected recovery",    value: `$${Math.round(totalExpected).toLocaleString()}`,      sub: `${Math.round(totalExpected / totalValue * 100)}% of face value`   },
+          { label: "Recommended advance",  value: `$${Math.round(advanceValue).toLocaleString()}`,       sub: `${Math.round(advanceRate * 100)}% of expected recovery`            },
+          { label: "Portfolio fundability",value: `${portfolioScore} / 100`,                             sub: concPenalty > 0 ? `−${concPenalty} concentration penalty` : "no concentration risk" },
         ].map(m => (
           <div key={m.label} className="border border-gray-200 rounded-xl p-3.5">
             <p className="text-xs text-gray-400 mb-1.5">{m.label}</p>
@@ -267,7 +436,12 @@ export default function DisputeFundingAssessor() {
                     className={`border-b border-gray-50 cursor-pointer transition-colors ${isSelected ? "bg-blue-50" : "hover:bg-gray-50"}`}
                   >
                     <td className="py-3 pr-3">
-                      <p className="font-medium text-gray-800">{c.id}</p>
+                      <div className="flex items-center gap-1.5">
+                        <p className="font-medium text-gray-800">{c.id}</p>
+                        {c.source === "uploaded" && (
+                          <span className="text-[9px] font-medium px-1 py-0.5 rounded bg-blue-100 text-blue-600 leading-none">CSV</span>
+                        )}
+                      </div>
                       <p className="text-gray-400">{c.windowDays - c.filedDaysAgo}d window remaining</p>
                     </td>
                     <td className="py-3 pr-3">
@@ -297,13 +471,13 @@ export default function DisputeFundingAssessor() {
         {sc && (() => {
           const g = grade(sc.fundability)
           const evidenceItems = [
-            { label: "AVS mismatch on shipping address", active: sc.avsMismatch, positive: true },
-            { label: "No 3DS authentication data", active: sc.no3DS, positive: true },
-            { label: "Delivery confirmation on file", active: sc.deliveryConf, positive: false },
-            { label: "Merchant acknowledgement", active: sc.merchantAck, positive: true },
-            { label: "PIN-verified transaction", active: sc.pinVerified, positive: false },
-            { label: "VFMP enrolled merchant", active: sc.isVFMP, positive: true },
-            { label: "Strong documentary evidence", active: sc.strongDocs, positive: true },
+            { label: "AVS mismatch on shipping address", active: sc.avsMismatch,  positive: true  },
+            { label: "No 3DS authentication data",       active: sc.no3DS,        positive: true  },
+            { label: "Delivery confirmation on file",    active: sc.deliveryConf, positive: false },
+            { label: "Merchant acknowledgement",         active: sc.merchantAck,  positive: true  },
+            { label: "PIN-verified transaction",         active: sc.pinVerified,  positive: false },
+            { label: "VFMP enrolled merchant",           active: sc.isVFMP,       positive: true  },
+            { label: "Strong documentary evidence",      active: sc.strongDocs,   positive: true  },
             ...(sc.priorClaims > 0 ? [{ label: `${sc.priorClaims} prior claim(s) on account`, active: true, positive: false }] : []),
           ].filter(e => e.active)
 
@@ -313,7 +487,12 @@ export default function DisputeFundingAssessor() {
               {/* Panel header */}
               <div className="flex items-start justify-between mb-3">
                 <div>
-                  <p className="font-medium text-gray-900">{sc.id}</p>
+                  <div className="flex items-center gap-1.5">
+                    <p className="font-medium text-gray-900">{sc.id}</p>
+                    {sc.source === "uploaded" && (
+                      <span className="text-[9px] font-medium px-1 py-0.5 rounded bg-blue-100 text-blue-600 leading-none">CSV</span>
+                    )}
+                  </div>
                   <p className="text-xs text-gray-400">{sc.code} — {sc.codeLabel}</p>
                 </div>
                 <button
@@ -349,7 +528,7 @@ export default function DisputeFundingAssessor() {
                       <div key={e.label} className="flex items-center gap-1.5 text-xs">
                         {e.positive
                           ? <CheckCircle className="w-3 h-3 text-green-500 shrink-0" />
-                          : <XCircle className="w-3 h-3 text-red-400 shrink-0" />}
+                          : <XCircle    className="w-3 h-3 text-red-400 shrink-0" />}
                         <span className={e.positive ? "text-green-700" : "text-red-600"}>{e.label}</span>
                       </div>
                     ))}
@@ -358,15 +537,17 @@ export default function DisputeFundingAssessor() {
               )}
 
               {/* Analyst note */}
-              <p className="bg-gray-50 rounded-lg p-2.5 text-xs text-gray-500 leading-relaxed mb-3">{sc.note}</p>
+              {sc.note && (
+                <p className="bg-gray-50 rounded-lg p-2.5 text-xs text-gray-500 leading-relaxed mb-3">{sc.note}</p>
+              )}
 
               {/* Financial summary */}
               <div className="border-t border-gray-100 pt-3 space-y-1.5">
                 {[
-                  { label: "Face value",              val: `$${sc.amount.toLocaleString()}`,                          hi: false },
-                  { label: "Expected recovery",       val: `$${Math.round(sc.expectedRecovery).toLocaleString()}`,    hi: false },
-                  { label: "Fundability score",       val: `${sc.fundability} / 100`,                                 hi: false },
-                  { label: "Advance at portfolio rate", val: `$${Math.round(sc.expectedRecovery * advanceRate).toLocaleString()} (${Math.round(advanceRate * 100)}%)`, hi: true },
+                  { label: "Face value",               val: `$${sc.amount.toLocaleString()}`,                                                                                hi: false },
+                  { label: "Expected recovery",        val: `$${Math.round(sc.expectedRecovery).toLocaleString()}`,                                                          hi: false },
+                  { label: "Fundability score",        val: `${sc.fundability} / 100`,                                                                                       hi: false },
+                  { label: "Advance at portfolio rate",val: `$${Math.round(sc.expectedRecovery * advanceRate).toLocaleString()} (${Math.round(advanceRate * 100)}%)`,        hi: true  },
                 ].map(r => (
                   <div key={r.label} className="flex justify-between text-xs">
                     <span className="text-gray-400">{r.label}</span>
