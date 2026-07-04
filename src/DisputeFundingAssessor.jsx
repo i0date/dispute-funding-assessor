@@ -1,20 +1,20 @@
 import { useState, useMemo, useRef } from "react"
 import { ChevronDown, ChevronUp, CheckCircle, XCircle, AlertTriangle, Upload, Download } from "lucide-react"
 
-// ─── Reason code base win rates (issuer perspective, Visa dispute outcome data) ───
+// ─── Reason code base win rates (issuer perspective, Visa + Mastercard outcome data) ───
 const BASE_WIN_RATES = {
-  "10.1": 0.85,
-  "10.2": 0.48,
-  "10.4": 0.76,
-  "10.5": 0.93,
-  "13.1": 0.41,
-  "13.3": 0.30,
-  "13.5": 0.57,
-  "13.6": 0.68,
-  "13.7": 0.44,
+  // Visa
+  "10.1": 0.85, "10.2": 0.48, "10.4": 0.76, "10.5": 0.93,
+  "13.1": 0.41, "13.3": 0.30, "13.5": 0.57, "13.6": 0.68, "13.7": 0.44,
+  // Mastercard
+  "4837": 0.78, "4840": 0.72, "4849": 0.65, "4863": 0.73,
+  "4870": 0.87, "4871": 0.81,
+  "4841": 0.48, "4853": 0.33, "4855": 0.44, "4859": 0.46,
+  "4860": 0.70, "4854": 0.38,
 }
 
 const CODE_LABELS = {
+  // Visa
   "10.1": "EMV liability shift",
   "10.2": "No cardholder auth (card present)",
   "10.4": "CNP fraud — other",
@@ -24,6 +24,19 @@ const CODE_LABELS = {
   "13.5": "Misrepresentation",
   "13.6": "Credit not processed",
   "13.7": "Cancelled merchandise / services",
+  // Mastercard
+  "4837": "No cardholder authorization",
+  "4840": "Fraudulent processing",
+  "4849": "Questionable merchant activity",
+  "4853": "Defective / not as described",
+  "4854": "Cardholder dispute — NEC",
+  "4855": "Goods or services not provided",
+  "4859": "Services not rendered",
+  "4860": "Credit not processed",
+  "4863": "Cardholder does not recognize",
+  "4870": "Chip liability shift",
+  "4871": "Chip/PIN liability shift",
+  "4841": "Cancelled recurring transaction",
 }
 
 // ─── Sample portfolio ─────────────────────────────────────────────────────────
@@ -291,7 +304,11 @@ export default function DisputeFundingAssessor() {
 
   const sorted = useMemo(() => {
     return [...allScored].sort((a, b) => {
-      const v = c => sortCol === "amount" ? c.amount : sortCol === "expectedRecovery" ? c.expectedRecovery : c.fundability
+      const v = c =>
+        sortCol === "amount"          ? c.amount :
+        sortCol === "expectedRecovery"? c.expectedRecovery :
+        sortCol === "projectedNet"    ? c.expectedRecovery * (1 - (portfolioScoreForSort >= 75 ? 0.65 : portfolioScoreForSort >= 60 ? 0.55 : portfolioScoreForSort >= 45 ? 0.44 : 0.30)) :
+        c.fundability
       return sortDir === "desc" ? v(b) - v(a) : v(a) - v(b)
     })
   }, [allScored, sortCol, sortDir])
@@ -303,9 +320,13 @@ export default function DisputeFundingAssessor() {
   const topShare       = Math.max(...allScored.map(c => c.amount)) / totalValue
   const concPenalty    = topShare > 0.35 ? 4 : 0
   const portfolioScore = Math.round(weightedScore - concPenalty)
+  const portfolioScoreForSort = portfolioScore
   const pg             = grade(portfolioScore)
   const advanceRate    = portfolioScore >= 75 ? 0.65 : portfolioScore >= 60 ? 0.55 : portfolioScore >= 45 ? 0.44 : 0.30
   const advanceValue   = totalExpected * advanceRate
+  const totalNet       = totalExpected - advanceValue
+  const claimNet       = (c) => Math.round(c.expectedRecovery * (1 - advanceRate))
+  const roaPercent     = advanceValue > 0 ? Math.round((totalNet / advanceValue) * 100) : 0
 
   const sc = selected ? allScored.find(c => c.id === selected) : null
 
@@ -388,17 +409,18 @@ export default function DisputeFundingAssessor() {
       )}
 
       {/* ── KPI cards ── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
         {[
-          { label: "Portfolio value",      value: `$${totalValue.toLocaleString()}`,                     sub: `${allScored.length} claims`                                       },
-          { label: "Expected recovery",    value: `$${Math.round(totalExpected).toLocaleString()}`,      sub: `${Math.round(totalExpected / totalValue * 100)}% of face value`   },
-          { label: "Recommended advance",  value: `$${Math.round(advanceValue).toLocaleString()}`,       sub: `${Math.round(advanceRate * 100)}% of expected recovery`            },
-          { label: "Portfolio fundability",value: `${portfolioScore} / 100`,                             sub: concPenalty > 0 ? `−${concPenalty} concentration penalty` : "no concentration risk" },
+          { label: "Portfolio value",      value: `$${totalValue.toLocaleString()}`,                          sub: `${allScored.length} claims`,                                                    hi: false },
+          { label: "Expected recovery",    value: `$${Math.round(totalExpected).toLocaleString()}`,           sub: `${Math.round(totalExpected / totalValue * 100)}% of face value`,               hi: false },
+          { label: "Recommended advance",  value: `$${Math.round(advanceValue).toLocaleString()}`,            sub: `${Math.round(advanceRate * 100)}% of expected recovery`,                        hi: false },
+          { label: "Projected net return", value: `$${Math.round(totalNet).toLocaleString()}`,                sub: `${roaPercent}% return on advance`,                                              hi: true  },
+          { label: "Portfolio fundability",value: `${portfolioScore} / 100`,                                  sub: concPenalty > 0 ? `−${concPenalty} concentration penalty` : "no concentration risk", hi: false },
         ].map(m => (
-          <div key={m.label} className="border border-gray-200 rounded-xl p-3.5">
-            <p className="text-xs text-gray-400 mb-1.5">{m.label}</p>
-            <p className="text-lg font-medium text-gray-900">{m.value}</p>
-            <p className="text-xs text-gray-400 mt-0.5">{m.sub}</p>
+          <div key={m.label} className={`border rounded-xl p-3.5 ${m.hi ? "border-green-200 bg-green-50" : "border-gray-200"}`}>
+            <p className={`text-xs mb-1.5 ${m.hi ? "text-green-600" : "text-gray-400"}`}>{m.label}</p>
+            <p className={`text-lg font-medium ${m.hi ? "text-green-800" : "text-gray-900"}`}>{m.value}</p>
+            <p className={`text-xs mt-0.5 ${m.hi ? "text-green-500" : "text-gray-400"}`}>{m.sub}</p>
           </div>
         ))}
       </div>
@@ -418,6 +440,9 @@ export default function DisputeFundingAssessor() {
                 </th>
                 <th className="text-right pb-2.5 pr-3">
                   <div className="flex justify-end"><SortBtn col="expectedRecovery" label="Expected" /></div>
+                </th>
+                <th className="text-right pb-2.5 pr-3">
+                  <div className="flex justify-end"><SortBtn col="projectedNet" label="Net" /></div>
                 </th>
                 <th className="text-right pb-2.5 pr-3">
                   <div className="flex justify-end"><SortBtn col="fundability" label="Score" /></div>
@@ -452,6 +477,10 @@ export default function DisputeFundingAssessor() {
                     <td className="py-3 pr-3 text-right">
                       <p className="text-gray-800">${Math.round(c.expectedRecovery).toLocaleString()}</p>
                       <p className="text-gray-400">{Math.round(c.recoveryProb * 100)}% win rate</p>
+                    </td>
+                    <td className="py-3 pr-3 text-right">
+                      <p className="text-green-700 font-medium">${claimNet(c).toLocaleString()}</p>
+                      <p className="text-gray-400">{Math.round((1 - advanceRate) * 100)}% margin</p>
                     </td>
                     <td className="py-3 pr-3">
                       <p className="text-right text-gray-800 font-medium mb-1">{c.fundability}</p>
@@ -544,14 +573,15 @@ export default function DisputeFundingAssessor() {
               {/* Financial summary */}
               <div className="border-t border-gray-100 pt-3 space-y-1.5">
                 {[
-                  { label: "Face value",               val: `$${sc.amount.toLocaleString()}`,                                                                                hi: false },
-                  { label: "Expected recovery",        val: `$${Math.round(sc.expectedRecovery).toLocaleString()}`,                                                          hi: false },
-                  { label: "Fundability score",        val: `${sc.fundability} / 100`,                                                                                       hi: false },
-                  { label: "Advance at portfolio rate",val: `$${Math.round(sc.expectedRecovery * advanceRate).toLocaleString()} (${Math.round(advanceRate * 100)}%)`,        hi: true  },
+                  { label: "Face value",               val: `$${sc.amount.toLocaleString()}`,                                                                                         color: "text-gray-700"   },
+                  { label: "Expected recovery",        val: `$${Math.round(sc.expectedRecovery).toLocaleString()} (${Math.round(sc.recoveryProb * 100)}% win)`,                       color: "text-gray-700"   },
+                  { label: "Advance at portfolio rate",val: `$${Math.round(sc.expectedRecovery * advanceRate).toLocaleString()} (${Math.round(advanceRate * 100)}%)`,                  color: "text-gray-700"   },
+                  { label: "Projected net return",     val: `$${claimNet(sc).toLocaleString()}`,                                                                                       color: "text-green-700 font-medium" },
+                  { label: "Return on advance",        val: `${Math.round(((1 - advanceRate) / advanceRate) * 100)}%`,                                                                 color: "text-green-700 font-medium" },
                 ].map(r => (
                   <div key={r.label} className="flex justify-between text-xs">
                     <span className="text-gray-400">{r.label}</span>
-                    <span className={r.hi ? `font-medium ${g.pill.split(" ")[0]}` : "text-gray-700"}>{r.val}</span>
+                    <span className={r.color}>{r.val}</span>
                   </div>
                 ))}
               </div>
