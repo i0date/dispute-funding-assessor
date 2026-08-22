@@ -1,12 +1,10 @@
 import { useState, useMemo, useRef } from "react"
-import { ChevronDown, ChevronUp, CheckCircle, XCircle, AlertTriangle, Upload, Download } from "lucide-react"
+import { Upload, Download, ChevronDown, ChevronUp, AlertTriangle, FileText, CheckCircle, XCircle } from "lucide-react"
 
-// ─── Reason code base win rates (issuer perspective, Visa + Mastercard outcome data) ───
+// ─── Reason code base win rates (issuer perspective, Visa + Mastercard) ───────
 const BASE_WIN_RATES = {
-  // Visa
   "10.1": 0.85, "10.2": 0.48, "10.4": 0.76, "10.5": 0.93,
   "13.1": 0.41, "13.3": 0.30, "13.5": 0.57, "13.6": 0.68, "13.7": 0.44,
-  // Mastercard
   "4837": 0.78, "4840": 0.72, "4849": 0.65, "4863": 0.73,
   "4870": 0.87, "4871": 0.81,
   "4841": 0.48, "4853": 0.33, "4855": 0.44, "4859": 0.46,
@@ -14,7 +12,6 @@ const BASE_WIN_RATES = {
 }
 
 const CODE_LABELS = {
-  // Visa
   "10.1": "EMV liability shift",
   "10.2": "No cardholder auth (card present)",
   "10.4": "CNP fraud — other",
@@ -24,7 +21,6 @@ const CODE_LABELS = {
   "13.5": "Misrepresentation",
   "13.6": "Credit not processed",
   "13.7": "Cancelled merchandise / services",
-  // Mastercard
   "4837": "No cardholder authorization",
   "4840": "Fraudulent processing",
   "4849": "Questionable merchant activity",
@@ -108,7 +104,6 @@ const CLAIMS_DATA = [
 ]
 
 // ─── Scoring model ────────────────────────────────────────────────────────────
-
 function computeRecoveryProb(c) {
   let p = BASE_WIN_RATES[c.code] ?? 0.50
   if (c.avsMismatch && c.code.startsWith("10")) p += 0.07
@@ -150,11 +145,9 @@ function scoreClaim(c) {
   return { recoveryProb, timeScore, amountScore, fundability, expectedRecovery }
 }
 
-// ─── Pre-score sample claims ──────────────────────────────────────────────────
 const SCORED_SAMPLE = CLAIMS_DATA.map(c => ({ ...c, ...scoreClaim(c) }))
 
 // ─── CSV utilities ────────────────────────────────────────────────────────────
-
 const TEMPLATE_HEADERS = [
   "id", "code", "amount", "filed_days_ago", "window_days",
   "avs_mismatch", "no_3ds", "delivery_confirmed", "merchant_acknowledged",
@@ -194,26 +187,20 @@ function parseCSVLine(line) {
 function parseCSVText(text) {
   const lines = text.trim().split(/\r?\n/)
   if (lines.length < 2) return { claims: [], errors: ["CSV must have a header row and at least one data row."] }
-
   const headers = lines[0].split(",").map(h => h.trim().toLowerCase().replace(/\s+/g, "_"))
   const errors = []
   const claims = []
-
   for (let i = 1; i < lines.length; i++) {
     if (!lines[i].trim()) continue
     const cols = parseCSVLine(lines[i])
     const row = {}
     headers.forEach((h, idx) => { row[h] = (cols[idx] || "").trim() })
-
     const code = (row.code || "").trim()
     if (!code) { errors.push(`Row ${i + 1}: missing reason code — skipped`); continue }
-
     const amount = parseFloat(row.amount)
     if (isNaN(amount) || amount <= 0) { errors.push(`Row ${i + 1}: invalid amount "${row.amount}" — skipped`); continue }
-
     const filedDaysAgo = parseInt(row.filed_days_ago || "0", 10)
     const windowDays   = parseInt(row.window_days || "120", 10)
-
     claims.push({
       id:           row.id || `UPL-${String(i).padStart(3, "0")}`,
       code,
@@ -234,7 +221,6 @@ function parseCSVText(text) {
       source:       "uploaded",
     })
   }
-
   return { claims, errors }
 }
 
@@ -249,29 +235,29 @@ function downloadTemplate() {
   URL.revokeObjectURL(url)
 }
 
-// ─── Grade helpers ────────────────────────────────────────────────────────────
+// ─── Grade helpers (editorial palette) ───────────────────────────────────────
 function grade(score) {
-  if (score >= 75) return { label: "A", pill: "text-green-700 bg-green-50 border-green-200",  bar: "bg-green-400"  }
-  if (score >= 60) return { label: "B", pill: "text-blue-700 bg-blue-50 border-blue-200",    bar: "bg-blue-400"   }
-  if (score >= 45) return { label: "C", pill: "text-amber-700 bg-amber-50 border-amber-200", bar: "bg-amber-400"  }
-  return              { label: "D", pill: "text-red-700 bg-red-50 border-red-200",           bar: "bg-red-400"    }
+  if (score >= 75) return { label: "A", bg: "bg-emerald-900", text: "text-emerald-50", barColor: "#064e3b" }
+  if (score >= 60) return { label: "B", bg: "bg-stone-700",   text: "text-stone-50",   barColor: "#44403c" }
+  if (score >= 45) return { label: "C", bg: "bg-amber-800",   text: "text-amber-50",   barColor: "#92400e" }
+  return              { label: "D", bg: "bg-red-900",     text: "text-red-50",     barColor: "#7f1d1d" }
 }
 
-function ScoreBar({ value, color, height = "h-1.5" }) {
+function ScoreBar({ value, color }) {
   return (
-    <div className={`${height} bg-gray-100 rounded-full overflow-hidden`}>
-      <div className={`h-full rounded-full ${color}`} style={{ width: `${Math.round(value * 100)}%` }} />
+    <div style={{ height: "3px", background: "#D4CCBC", width: "100%" }}>
+      <div style={{ height: "100%", width: `${Math.round(value * 100)}%`, background: color }} />
     </div>
   )
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function DisputeFundingAssessor() {
-  const [selected, setSelected]         = useState(null)
-  const [sortCol, setSortCol]           = useState("fundability")
-  const [sortDir, setSortDir]           = useState("desc")
-  const [uploadedClaims, setUploaded]   = useState([])
-  const [parseErrors, setParseErrors]   = useState([])
+  const [selected, setSelected]       = useState(null)
+  const [sortCol, setSortCol]         = useState("fundability")
+  const [sortDir, setSortDir]         = useState("desc")
+  const [uploadedClaims, setUploaded] = useState([])
+  const [parseErrors, setParseErrors] = useState([])
   const fileRef = useRef(null)
 
   function handleSort(col) {
@@ -299,34 +285,32 @@ export default function DisputeFundingAssessor() {
     setSelected(null)
   }
 
-  // ── Combine sample + uploaded ──────────────────────────────────────────────
   const allScored = useMemo(() => [...SCORED_SAMPLE, ...uploadedClaims], [uploadedClaims])
+
+  // ── Portfolio metrics ──────────────────────────────────────────────────────
+  const totalValue    = allScored.reduce((s, c) => s + c.amount, 0)
+  const totalExpected = allScored.reduce((s, c) => s + c.expectedRecovery, 0)
+  const weightedScore = allScored.reduce((s, c) => s + c.fundability * c.amount, 0) / totalValue
+  const topShare      = Math.max(...allScored.map(c => c.amount)) / totalValue
+  const concPenalty   = topShare > 0.35 ? 4 : 0
+  const portfolioScore = Math.round(weightedScore - concPenalty)
+  const pg            = grade(portfolioScore)
+  const advanceRate   = portfolioScore >= 75 ? 0.65 : portfolioScore >= 60 ? 0.55 : portfolioScore >= 45 ? 0.44 : 0.30
+  const advanceValue  = totalExpected * advanceRate
+  const totalNet      = totalExpected - advanceValue
+  const claimNet      = (c) => Math.round(c.expectedRecovery * (1 - advanceRate))
+  const roaPercent    = advanceValue > 0 ? Math.round((totalNet / advanceValue) * 100) : 0
 
   const sorted = useMemo(() => {
     return [...allScored].sort((a, b) => {
       const v = c =>
         sortCol === "amount"          ? c.amount :
         sortCol === "expectedRecovery"? c.expectedRecovery :
-        sortCol === "projectedNet"    ? c.expectedRecovery * (1 - (portfolioScoreForSort >= 75 ? 0.65 : portfolioScoreForSort >= 60 ? 0.55 : portfolioScoreForSort >= 45 ? 0.44 : 0.30)) :
+        sortCol === "projectedNet"    ? claimNet(c) :
         c.fundability
       return sortDir === "desc" ? v(b) - v(a) : v(a) - v(b)
     })
   }, [allScored, sortCol, sortDir])
-
-  // ── Portfolio metrics (across all claims) ──────────────────────────────────
-  const totalValue     = allScored.reduce((s, c) => s + c.amount, 0)
-  const totalExpected  = allScored.reduce((s, c) => s + c.expectedRecovery, 0)
-  const weightedScore  = allScored.reduce((s, c) => s + c.fundability * c.amount, 0) / totalValue
-  const topShare       = Math.max(...allScored.map(c => c.amount)) / totalValue
-  const concPenalty    = topShare > 0.35 ? 4 : 0
-  const portfolioScore = Math.round(weightedScore - concPenalty)
-  const portfolioScoreForSort = portfolioScore
-  const pg             = grade(portfolioScore)
-  const advanceRate    = portfolioScore >= 75 ? 0.65 : portfolioScore >= 60 ? 0.55 : portfolioScore >= 45 ? 0.44 : 0.30
-  const advanceValue   = totalExpected * advanceRate
-  const totalNet       = totalExpected - advanceValue
-  const claimNet       = (c) => Math.round(c.expectedRecovery * (1 - advanceRate))
-  const roaPercent     = advanceValue > 0 ? Math.round((totalNet / advanceValue) * 100) : 0
 
   const sc = selected ? allScored.find(c => c.id === selected) : null
 
@@ -336,7 +320,7 @@ export default function DisputeFundingAssessor() {
     return (
       <button
         onClick={() => handleSort(col)}
-        className={`flex items-center gap-0.5 text-xs font-normal transition-colors ${active ? "text-gray-700" : "text-gray-400 hover:text-gray-600"}`}
+        className={`flex items-center gap-0.5 mono-font text-[10px] tracking-widest transition-colors ${active ? "text-stone-900" : "text-stone-400 hover:text-stone-600"}`}
       >
         {label}<Icon className="w-3 h-3" />
       </button>
@@ -344,275 +328,405 @@ export default function DisputeFundingAssessor() {
   }
 
   return (
-    <div className="p-5 max-w-5xl mx-auto text-sm font-sans">
+    <div className="min-h-screen" style={{ background: '#F5F1EA', fontFamily: 'Georgia, "Times New Roman", serif' }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=JetBrains+Mono:wght@400;500&display=swap');
+        .display-font { font-family: 'Fraunces', Georgia, serif; }
+        .mono-font    { font-family: 'JetBrains Mono', monospace; }
+        .section-divider { border-top: 1px solid #1A1814; margin: 32px 0 24px 0; }
+        .upload-zone {
+          border: 1px dashed #9C8F7E; padding: 20px 24px;
+          background: #FAF7F1; display: flex; flex-wrap: wrap;
+          align-items: center; gap: 12px;
+        }
+        .upload-btn {
+          font-family: 'JetBrains Mono', monospace; font-size: 10px;
+          letter-spacing: 0.12em; padding: 9px 16px;
+          border: 1px solid #1A1814; background: #FAF7F1;
+          color: #1A1814; cursor: pointer; display: flex;
+          align-items: center; gap: 6px; transition: all 0.15s;
+          text-transform: uppercase;
+        }
+        .upload-btn:hover { background: #1A1814; color: #F5F1EA; }
+        .input-field {
+          background: #FAF7F1; border: 1px solid #D4CCBC;
+          padding: 10px 12px; font-family: 'JetBrains Mono', monospace;
+          font-size: 12px; color: #1A1814; width: 100%;
+        }
+        .input-field:focus { outline: none; border-color: #1A1814; }
+        tr.claim-row { cursor: pointer; border-bottom: 1px solid #E8E0D4; }
+        tr.claim-row:hover td { background: #EEE9E0; }
+        tr.claim-row.selected td { background: #1A1814; color: #F5F1EA; }
+      `}</style>
 
-      {/* ── Header ── */}
-      <div className="flex items-start justify-between mb-4">
+      <div className="max-w-6xl mx-auto px-4 py-8 sm:px-6 sm:py-12">
+
+        {/* ── Masthead ── */}
+        <div className="border-b-2 border-black pb-6 mb-8 sm:pb-8 sm:mb-12">
+          <div className="flex items-baseline justify-between mb-3 flex-wrap gap-2">
+            <div className="mono-font text-xs tracking-widest text-stone-600 hidden sm:block">ISSUE Nº 003 — DISPUTE FUNDING</div>
+            <div className="mono-font text-xs tracking-widest text-stone-600 sm:hidden">DISPUTE FUNDING</div>
+            <div className="mono-font text-xs tracking-widest text-stone-600">
+              {new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase()}
+            </div>
+          </div>
+          <h1 className="display-font font-bold text-stone-900 leading-none" style={{ fontSize: 'clamp(40px, 6vw, 80px)', letterSpacing: '-0.03em' }}>
+            The Dispute<br />
+            <span style={{ fontStyle: 'italic', fontWeight: 500 }}>Funding Assessor</span>
+          </h1>
+          <p className="display-font text-stone-700 mt-4 max-w-2xl" style={{ fontSize: 'clamp(14px, 1.8vw, 17px)', lineHeight: '1.5' }}>
+            A portfolio-level scoring engine that assesses dispute fundability, win probability, and expected recovery — across Visa and Mastercard claims.
+          </p>
+        </div>
+
+        {/* ── Step 01 — Portfolio Upload ── */}
         <div>
-          <p className="text-xs text-gray-400 uppercase tracking-widest mb-1">Dispute funding assessment</p>
-          <h1 className="text-xl font-medium text-gray-900">
-            {allScored.length} open claim{allScored.length !== 1 ? "s" : ""} — portfolio analysis
+          <div className="flex items-baseline gap-3 mb-4">
+            <span className="mono-font text-xs text-stone-500">01</span>
+            <h2 className="display-font font-semibold text-2xl text-stone-900" style={{ letterSpacing: '-0.01em' }}>Portfolio Upload</h2>
+          </div>
+
+          <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={handleFile} />
+
+          <div className="upload-zone">
+            <button className="upload-btn" onClick={() => fileRef.current?.click()}>
+              <Upload style={{ width: '13px', height: '13px' }} />
+              Upload portfolio CSV
+            </button>
+            <button className="upload-btn" onClick={downloadTemplate}>
+              <Download style={{ width: '13px', height: '13px' }} />
+              Download template
+            </button>
             {uploadedClaims.length > 0 && (
-              <span className="ml-2 text-xs font-normal text-gray-400">
-                ({SCORED_SAMPLE.length} sample · {uploadedClaims.length} uploaded)
+              <div className="flex items-center gap-3 ml-auto">
+                <span className="mono-font text-[10px] tracking-widest text-stone-500">
+                  {uploadedClaims.length} CLAIM{uploadedClaims.length !== 1 ? "S" : ""} LOADED
+                </span>
+                <button onClick={clearUploaded} className="mono-font text-[10px] tracking-widest text-stone-400 hover:text-stone-700 transition-colors">
+                  CLEAR
+                </button>
+              </div>
+            )}
+            {uploadedClaims.length === 0 && parseErrors.length === 0 && (
+              <span className="mono-font text-[10px] tracking-widest text-stone-400 ml-auto">
+                UPLOAD YOUR CLAIMS — SCORED ALONGSIDE SAMPLE DATA
               </span>
             )}
-          </h1>
-        </div>
-        <div className={`border rounded-xl px-4 py-2 text-2xl font-medium ${pg.pill}`}>
-          {pg.label}
-        </div>
-      </div>
-
-      {/* ── CSV upload bar ── */}
-      <div className="mb-5 flex flex-wrap items-center gap-3 p-3 border border-dashed border-gray-200 rounded-xl bg-gray-50">
-        <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={handleFile} />
-
-        <button
-          onClick={() => fileRef.current?.click()}
-          className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-white border border-gray-200 text-gray-600 hover:border-gray-300 hover:text-gray-800 transition-colors"
-        >
-          <Upload className="w-3.5 h-3.5" />
-          Upload portfolio CSV
-        </button>
-
-        <button
-          onClick={downloadTemplate}
-          className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-white border border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700 transition-colors"
-        >
-          <Download className="w-3.5 h-3.5" />
-          Download template
-        </button>
-
-        {uploadedClaims.length > 0 && (
-          <div className="flex items-center gap-2 ml-auto">
-            <span className="text-xs text-gray-500">{uploadedClaims.length} claim{uploadedClaims.length !== 1 ? "s" : ""} loaded</span>
-            <button onClick={clearUploaded} className="text-xs text-gray-400 hover:text-gray-600 transition-colors">clear</button>
           </div>
-        )}
 
-        {uploadedClaims.length === 0 && parseErrors.length === 0 && (
-          <span className="text-xs text-gray-400 ml-auto">
-            Upload your own claims — they'll be scored alongside the sample data
-          </span>
-        )}
-      </div>
-
-      {/* ── Parse errors ── */}
-      {parseErrors.length > 0 && (
-        <div className="mb-4 p-3 border border-amber-200 bg-amber-50 rounded-xl">
-          <p className="text-xs font-medium text-amber-700 mb-1">Some rows were skipped</p>
-          {parseErrors.map((e, i) => (
-            <p key={i} className="text-xs text-amber-600">{e}</p>
-          ))}
+          {parseErrors.length > 0 && (
+            <div className="mt-3 border border-amber-700 bg-amber-50 p-4">
+              <div className="mono-font text-xs tracking-widest text-amber-800 mb-2">⚠ ROWS SKIPPED</div>
+              {parseErrors.map((e, i) => (
+                <div key={i} className="display-font text-sm text-amber-900">{e}</div>
+              ))}
+            </div>
+          )}
         </div>
-      )}
 
-      {/* ── KPI cards ── */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
-        {[
-          { label: "Portfolio value",      value: `$${totalValue.toLocaleString()}`,                          sub: `${allScored.length} claims`,                                                    hi: false },
-          { label: "Expected recovery",    value: `$${Math.round(totalExpected).toLocaleString()}`,           sub: `${Math.round(totalExpected / totalValue * 100)}% of face value`,               hi: false },
-          { label: "Recommended advance",  value: `$${Math.round(advanceValue).toLocaleString()}`,            sub: `${Math.round(advanceRate * 100)}% of expected recovery`,                        hi: false },
-          { label: "Projected net return", value: `$${Math.round(totalNet).toLocaleString()}`,                sub: `${roaPercent}% return on advance`,                                              hi: true  },
-          { label: "Portfolio fundability",value: `${portfolioScore} / 100`,                                  sub: concPenalty > 0 ? `−${concPenalty} concentration penalty` : "no concentration risk", hi: false },
-        ].map(m => (
-          <div key={m.label} className={`border rounded-xl p-3.5 ${m.hi ? "border-green-200 bg-green-50" : "border-gray-200"}`}>
-            <p className={`text-xs mb-1.5 ${m.hi ? "text-green-600" : "text-gray-400"}`}>{m.label}</p>
-            <p className={`text-lg font-medium ${m.hi ? "text-green-800" : "text-gray-900"}`}>{m.value}</p>
-            <p className={`text-xs mt-0.5 ${m.hi ? "text-green-500" : "text-gray-400"}`}>{m.sub}</p>
+        {/* ── Step 02 — Portfolio Summary ── */}
+        <div className="section-divider" />
+        <div>
+          <div className="flex items-baseline gap-3 mb-2 flex-wrap">
+            <span className="mono-font text-xs text-stone-500">02</span>
+            <h2 className="display-font font-semibold text-2xl text-stone-900" style={{ letterSpacing: '-0.01em' }}>Portfolio Summary</h2>
+            <div className="ml-auto flex items-center gap-3">
+              <span className="mono-font text-xs text-stone-400">
+                {allScored.length} CLAIM{allScored.length !== 1 ? "S" : ""}
+                {uploadedClaims.length > 0 && ` · ${SCORED_SAMPLE.length} SAMPLE + ${uploadedClaims.length} UPLOADED`}
+              </span>
+              <span className={`mono-font text-sm font-bold px-3 py-1 ${pg.bg} ${pg.text}`}>
+                GRADE {pg.label}
+              </span>
+            </div>
           </div>
-        ))}
-      </div>
+          <p className="display-font text-stone-500 text-[15px] mb-6 ml-7" style={{ lineHeight: '1.5' }}>
+            Portfolio-weighted fundability score across all open claims. Advance rate scales with grade: A→65% / B→55% / C→44% / D→30%.
+            {concPenalty > 0 && <span className="text-amber-700"> −{concPenalty} concentration penalty applied (single claim &gt;35% of portfolio).</span>}
+          </p>
 
-      {/* ── Table + detail panel ── */}
-      <div className="flex flex-col md:flex-row gap-4 items-start">
-
-        {/* Claims table */}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="border-b border-gray-100">
-                <th className="text-left pb-2.5 pr-3 font-normal text-gray-400">Claim</th>
-                <th className="text-left pb-2.5 pr-3 font-normal text-gray-400">Reason code</th>
-                <th className="text-right pb-2.5 pr-3">
-                  <div className="flex justify-end"><SortBtn col="amount" label="Amount" /></div>
-                </th>
-                <th className="text-right pb-2.5 pr-3">
-                  <div className="flex justify-end"><SortBtn col="expectedRecovery" label="Expected" /></div>
-                </th>
-                <th className="text-right pb-2.5 pr-3">
-                  <div className="flex justify-end"><SortBtn col="projectedNet" label="Net" /></div>
-                </th>
-                <th className="text-right pb-2.5 pr-3">
-                  <div className="flex justify-end"><SortBtn col="fundability" label="Score" /></div>
-                </th>
-                <th className="text-center pb-2.5 font-normal text-gray-400">Grade</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sorted.map(c => {
-                const g          = grade(c.fundability)
-                const isSelected = selected === c.id
-                return (
-                  <tr
-                    key={c.id}
-                    onClick={() => setSelected(isSelected ? null : c.id)}
-                    className={`border-b border-gray-50 cursor-pointer transition-colors ${isSelected ? "bg-blue-50" : "hover:bg-gray-50"}`}
-                  >
-                    <td className="py-3 pr-3">
-                      <div className="flex items-center gap-1.5">
-                        <p className="font-medium text-gray-800">{c.id}</p>
-                        {c.source === "uploaded" && (
-                          <span className="text-[9px] font-medium px-1 py-0.5 rounded bg-blue-100 text-blue-600 leading-none">CSV</span>
-                        )}
-                      </div>
-                      <p className="text-gray-400">{c.windowDays - c.filedDaysAgo}d window remaining</p>
-                    </td>
-                    <td className="py-3 pr-3">
-                      <p className="text-gray-700">{c.code}</p>
-                      <p className="text-gray-400 text-[10px] leading-snug">{c.codeLabel}</p>
-                    </td>
-                    <td className="py-3 pr-3 text-right text-gray-700">${c.amount.toLocaleString()}</td>
-                    <td className="py-3 pr-3 text-right">
-                      <p className="text-gray-800">${Math.round(c.expectedRecovery).toLocaleString()}</p>
-                      <p className="text-gray-400">{Math.round(c.recoveryProb * 100)}% win rate</p>
-                    </td>
-                    <td className="py-3 pr-3 text-right">
-                      <p className="text-green-700 font-medium">${claimNet(c).toLocaleString()}</p>
-                      <p className="text-gray-400">{Math.round((1 - advanceRate) * 100)}% margin</p>
-                    </td>
-                    <td className="py-3 pr-3">
-                      <p className="text-right text-gray-800 font-medium mb-1">{c.fundability}</p>
-                      <ScoreBar value={c.fundability / 100} color={g.bar} />
-                    </td>
-                    <td className="py-3 text-center">
-                      <span className={`border rounded px-2 py-0.5 font-medium text-xs ${g.pill}`}>{g.label}</span>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+            {[
+              { label: "PORTFOLIO VALUE",      value: `$${totalValue.toLocaleString()}`,                      sub: `${allScored.length} claims`                              },
+              { label: "EXPECTED RECOVERY",    value: `$${Math.round(totalExpected).toLocaleString()}`,        sub: `${Math.round(totalExpected / totalValue * 100)}% of face` },
+              { label: "RECOMMENDED ADVANCE",  value: `$${Math.round(advanceValue).toLocaleString()}`,         sub: `${Math.round(advanceRate * 100)}% of expected`           },
+              { label: "PROJECTED NET RETURN", value: `$${Math.round(totalNet).toLocaleString()}`,             sub: `${roaPercent}% return on advance`,  hi: true            },
+              { label: "FUNDABILITY SCORE",    value: `${portfolioScore} / 100`,                               sub: concPenalty > 0 ? `−${concPenalty} concentration` : "no concentration risk" },
+            ].map(m => (
+              <div key={m.label} className={`border p-4 ${m.hi ? "border-emerald-700 bg-emerald-50" : "border-stone-300"}`} style={m.hi ? {} : { background: '#FAF7F1' }}>
+                <div className={`mono-font text-[9px] tracking-widest mb-2 ${m.hi ? "text-emerald-700" : "text-stone-400"}`}>{m.label}</div>
+                <div className={`display-font font-semibold ${m.hi ? "text-emerald-900" : "text-stone-900"}`} style={{ fontSize: '20px', letterSpacing: '-0.02em' }}>{m.value}</div>
+                <div className={`mono-font text-[9px] tracking-wide mt-1 ${m.hi ? "text-emerald-600" : "text-stone-400"}`}>{m.sub}</div>
+              </div>
+            ))}
+          </div>
         </div>
 
-        {/* Detail panel */}
-        {sc && (() => {
-          const g = grade(sc.fundability)
-          const evidenceItems = [
-            { label: "AVS mismatch on shipping address", active: sc.avsMismatch,  positive: true  },
-            { label: "No 3DS authentication data",       active: sc.no3DS,        positive: true  },
-            { label: "Delivery confirmation on file",    active: sc.deliveryConf, positive: false },
-            { label: "Merchant acknowledgement",         active: sc.merchantAck,  positive: true  },
-            { label: "PIN-verified transaction",         active: sc.pinVerified,  positive: false },
-            { label: "VFMP enrolled merchant",           active: sc.isVFMP,       positive: true  },
-            { label: "Strong documentary evidence",      active: sc.strongDocs,   positive: true  },
-            ...(sc.priorClaims > 0 ? [{ label: `${sc.priorClaims} prior claim(s) on account`, active: true, positive: false }] : []),
-          ].filter(e => e.active)
+        {/* ── Step 03 — Claims Table ── */}
+        <div className="section-divider" />
+        <div>
+          <div className="flex items-baseline gap-3 mb-2">
+            <span className="mono-font text-xs text-stone-500">03</span>
+            <h2 className="display-font font-semibold text-2xl text-stone-900" style={{ letterSpacing: '-0.01em' }}>Claim Detail</h2>
+          </div>
+          <p className="display-font text-stone-500 text-[15px] mb-6 ml-7" style={{ lineHeight: '1.5' }}>
+            Click any row to view score breakdown, evidence factors, and financial summary.
+          </p>
 
-          return (
-            <div className="w-full md:w-80 md:flex-shrink-0 border border-gray-200 rounded-xl p-4">
+          <div className={`flex flex-col ${sc ? 'lg:flex-row' : ''} gap-6 items-start`}>
 
-              {/* Panel header */}
-              <div className="flex items-start justify-between mb-3">
-                <div>
-                  <div className="flex items-center gap-1.5">
-                    <p className="font-medium text-gray-900">{sc.id}</p>
-                    {sc.source === "uploaded" && (
-                      <span className="text-[9px] font-medium px-1 py-0.5 rounded bg-blue-100 text-blue-600 leading-none">CSV</span>
-                    )}
-                  </div>
-                  <p className="text-xs text-gray-400">{sc.code} — {sc.codeLabel}</p>
+            {/* Table */}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="border border-stone-300 overflow-hidden" style={{ background: '#FAF7F1' }}>
+                <div className="overflow-x-auto">
+                  <table className="w-full" style={{ minWidth: '640px' }}>
+                    <thead>
+                      <tr className="border-b border-stone-300" style={{ background: '#EEE9E0' }}>
+                        <th className="text-left px-4 py-3">
+                          <span className="mono-font text-[10px] tracking-widest text-stone-500">CLAIM</span>
+                        </th>
+                        <th className="text-left px-4 py-3">
+                          <span className="mono-font text-[10px] tracking-widest text-stone-500">CODE</span>
+                        </th>
+                        <th className="text-right px-4 py-3">
+                          <div className="flex justify-end"><SortBtn col="amount" label="AMOUNT" /></div>
+                        </th>
+                        <th className="text-right px-4 py-3">
+                          <div className="flex justify-end"><SortBtn col="expectedRecovery" label="EXPECTED" /></div>
+                        </th>
+                        <th className="text-right px-4 py-3">
+                          <div className="flex justify-end"><SortBtn col="projectedNet" label="NET" /></div>
+                        </th>
+                        <th className="text-right px-4 py-3">
+                          <div className="flex justify-end"><SortBtn col="fundability" label="SCORE" /></div>
+                        </th>
+                        <th className="text-center px-4 py-3">
+                          <span className="mono-font text-[10px] tracking-widest text-stone-500">GRADE</span>
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sorted.map(c => {
+                        const g          = grade(c.fundability)
+                        const isSelected = selected === c.id
+                        return (
+                          <tr
+                            key={c.id}
+                            onClick={() => setSelected(isSelected ? null : c.id)}
+                            className={`claim-row ${isSelected ? 'selected' : ''}`}
+                          >
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2">
+                                <span className={`mono-font text-xs font-medium ${isSelected ? 'text-stone-100' : 'text-stone-800'}`}>{c.id}</span>
+                                {c.source === "uploaded" && (
+                                  <span className={`mono-font text-[8px] px-1.5 py-0.5 ${isSelected ? 'bg-stone-600 text-stone-200' : 'bg-blue-900 text-blue-50'}`}>CSV</span>
+                                )}
+                              </div>
+                              <div className={`mono-font text-[10px] mt-0.5 ${isSelected ? 'text-stone-400' : 'text-stone-400'}`}>
+                                {c.windowDays - c.filedDaysAgo}d remaining
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className={`mono-font text-xs ${isSelected ? 'text-stone-100' : 'text-stone-700'}`}>{c.code}</div>
+                              <div className={`display-font text-[12px] leading-snug mt-0.5 ${isSelected ? 'text-stone-300' : 'text-stone-500'}`}>{c.codeLabel}</div>
+                            </td>
+                            <td className={`px-4 py-3 text-right mono-font text-xs ${isSelected ? 'text-stone-100' : 'text-stone-700'}`}>
+                              ${c.amount.toLocaleString()}
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              <div className={`mono-font text-xs ${isSelected ? 'text-stone-100' : 'text-stone-700'}`}>
+                                ${Math.round(c.expectedRecovery).toLocaleString()}
+                              </div>
+                              <div className={`mono-font text-[10px] mt-0.5 ${isSelected ? 'text-stone-400' : 'text-stone-400'}`}>
+                                {Math.round(c.recoveryProb * 100)}% win
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              <div className={`mono-font text-xs font-medium ${isSelected ? 'text-emerald-300' : 'text-emerald-800'}`}>
+                                ${claimNet(c).toLocaleString()}
+                              </div>
+                              <div className={`mono-font text-[10px] mt-0.5 ${isSelected ? 'text-stone-400' : 'text-stone-400'}`}>
+                                {Math.round((1 - advanceRate) * 100)}% margin
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className={`mono-font text-xs text-right mb-1.5 ${isSelected ? 'text-stone-100' : 'text-stone-800'}`}>
+                                {c.fundability}
+                              </div>
+                              <ScoreBar value={c.fundability / 100} color={isSelected ? '#F5F1EA' : g.barColor} />
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              <span className={`mono-font text-xs px-2 py-0.5 font-medium ${isSelected ? `${g.bg} ${g.text}` : `${g.bg} ${g.text}`}`}>
+                                {g.label}
+                              </span>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
                 </div>
-                <button
-                  onClick={() => setSelected(null)}
-                  className="text-gray-300 hover:text-gray-500 text-xl leading-none mt-0.5"
-                  aria-label="Close detail panel"
-                >×</button>
-              </div>
-
-              {/* Score breakdown */}
-              <div className="space-y-3 mb-4">
-                {[
-                  { label: "Recovery probability", weight: "55%", raw: sc.recoveryProb,  display: `${Math.round(sc.recoveryProb * 100)}%`,  color: sc.recoveryProb >= 0.65 ? "bg-green-400" : sc.recoveryProb >= 0.40 ? "bg-amber-400" : "bg-red-400"  },
-                  { label: "Time value",           weight: "25%", raw: sc.timeScore,     display: `${Math.round(sc.timeScore * 100)}%`,     color: sc.timeScore >= 0.85 ? "bg-green-400" : sc.timeScore >= 0.65 ? "bg-amber-400" : "bg-red-400"     },
-                  { label: "Amount efficiency",    weight: "20%", raw: sc.amountScore,   display: `${Math.round(sc.amountScore * 100)}%`,   color: sc.amountScore >= 0.85 ? "bg-green-400" : sc.amountScore >= 0.55 ? "bg-amber-400" : "bg-red-400"   },
-                ].map(m => (
-                  <div key={m.label}>
-                    <div className="flex justify-between items-baseline mb-1">
-                      <span className="text-xs text-gray-500">{m.label} <span className="text-gray-300">({m.weight})</span></span>
-                      <span className="text-xs font-medium text-gray-700">{m.display}</span>
-                    </div>
-                    <ScoreBar value={m.raw} color={m.color} />
-                  </div>
-                ))}
-              </div>
-
-              {/* Evidence flags */}
-              {evidenceItems.length > 0 && (
-                <div className="mb-3">
-                  <p className="text-xs text-gray-400 mb-1.5">Evidence factors</p>
-                  <div className="space-y-1.5">
-                    {evidenceItems.map(e => (
-                      <div key={e.label} className="flex items-center gap-1.5 text-xs">
-                        {e.positive
-                          ? <CheckCircle className="w-3 h-3 text-green-500 shrink-0" />
-                          : <XCircle    className="w-3 h-3 text-red-400 shrink-0" />}
-                        <span className={e.positive ? "text-green-700" : "text-red-600"}>{e.label}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Analyst note */}
-              {sc.note && (
-                <p className="bg-gray-50 rounded-lg p-2.5 text-xs text-gray-500 leading-relaxed mb-3">{sc.note}</p>
-              )}
-
-              {/* Financial summary */}
-              <div className="border-t border-gray-100 pt-3 space-y-1.5">
-                {[
-                  { label: "Face value",               val: `$${sc.amount.toLocaleString()}`,                                                                                         color: "text-gray-700"   },
-                  { label: "Expected recovery",        val: `$${Math.round(sc.expectedRecovery).toLocaleString()} (${Math.round(sc.recoveryProb * 100)}% win)`,                       color: "text-gray-700"   },
-                  { label: "Advance at portfolio rate",val: `$${Math.round(sc.expectedRecovery * advanceRate).toLocaleString()} (${Math.round(advanceRate * 100)}%)`,                  color: "text-gray-700"   },
-                  { label: "Projected net return",     val: `$${claimNet(sc).toLocaleString()}`,                                                                                       color: "text-green-700 font-medium" },
-                  { label: "Return on advance",        val: `${Math.round(((1 - advanceRate) / advanceRate) * 100)}%`,                                                                 color: "text-green-700 font-medium" },
-                ].map(r => (
-                  <div key={r.label} className="flex justify-between text-xs">
-                    <span className="text-gray-400">{r.label}</span>
-                    <span className={r.color}>{r.val}</span>
-                  </div>
-                ))}
               </div>
             </div>
-          )
-        })()}
-      </div>
 
-      {/* ── Scoring methodology note ── */}
-      <div className="mt-6 pt-3 border-t border-gray-100">
-        <p className="text-xs text-gray-400 mb-2 font-medium">Scoring model</p>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs text-gray-400">
-          <p><span className="font-medium text-gray-500">Recovery probability (55%)</span> — reason code base win rate adjusted for AVS mismatch, 3DS absence, delivery confirmation, merchant acknowledgement, PIN verification, VFMP enrollment, documentation quality, prior claim history, and merchant chargeback ratio.</p>
-          <p><span className="font-medium text-gray-500">Time value (25%)</span> — days remaining in the filing window. Claims inside 30 days carry a material discount; inside 15 days are severely penalized. Visa standard window is 120 days; fraud codes (10.x) extend to 540 in some jurisdictions.</p>
-          <p><span className="font-medium text-gray-500">Amount efficiency (20%)</span> — funder overhead is roughly fixed per claim. Sub-$100 claims rarely justify the cost. Amounts over $2,000 introduce concentration risk. Sweet spot is $200–$2,000. Portfolio-level advance rates: A (65%) / B (55%) / C (44%) / D (30%) of expected recovery.</p>
+            {/* Detail panel */}
+            {sc && (() => {
+              const g = grade(sc.fundability)
+              const evidenceItems = [
+                { label: "AVS mismatch on shipping address", active: sc.avsMismatch,  positive: true  },
+                { label: "No 3DS authentication data",       active: sc.no3DS,        positive: true  },
+                { label: "Delivery confirmation on file",    active: sc.deliveryConf, positive: false },
+                { label: "Merchant acknowledgement",         active: sc.merchantAck,  positive: true  },
+                { label: "PIN-verified transaction",         active: sc.pinVerified,  positive: false },
+                { label: "VFMP enrolled merchant",           active: sc.isVFMP,       positive: true  },
+                { label: "Strong documentary evidence",      active: sc.strongDocs,   positive: true  },
+                ...(sc.priorClaims > 0 ? [{ label: `${sc.priorClaims} prior claim(s) on account`, active: true, positive: false }] : []),
+              ].filter(e => e.active)
+
+              return (
+                <div className="w-full lg:w-80 lg:flex-shrink-0 border-2 border-stone-900" style={{ background: '#FAF7F1' }}>
+
+                  {/* Panel header */}
+                  <div className="border-b border-stone-300 px-5 py-4 flex items-start justify-between" style={{ background: '#1A1814' }}>
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="mono-font text-xs font-medium text-stone-100">{sc.id}</span>
+                        {sc.source === "uploaded" && (
+                          <span className="mono-font text-[8px] px-1.5 py-0.5 bg-blue-800 text-blue-100">CSV</span>
+                        )}
+                      </div>
+                      <div className="display-font text-stone-300 text-[13px]">{sc.code} — {sc.codeLabel}</div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={`mono-font text-sm font-bold px-2 py-0.5 ${g.bg} ${g.text}`}>{g.label}</span>
+                      <button
+                        onClick={() => setSelected(null)}
+                        className="text-stone-400 hover:text-stone-100 transition-colors mono-font text-lg leading-none"
+                        aria-label="Close"
+                      >×</button>
+                    </div>
+                  </div>
+
+                  <div className="px-5 py-5 space-y-5">
+
+                    {/* Score breakdown */}
+                    <div>
+                      <div className="mono-font text-[9px] tracking-widest text-stone-400 mb-3">SCORE BREAKDOWN</div>
+                      <div className="space-y-3">
+                        {[
+                          { label: "Recovery probability", weight: "55%", raw: sc.recoveryProb, display: `${Math.round(sc.recoveryProb * 100)}%`,
+                            color: sc.recoveryProb >= 0.65 ? "#064e3b" : sc.recoveryProb >= 0.40 ? "#92400e" : "#7f1d1d" },
+                          { label: "Time value",           weight: "25%", raw: sc.timeScore,    display: `${Math.round(sc.timeScore * 100)}%`,
+                            color: sc.timeScore >= 0.85 ? "#064e3b" : sc.timeScore >= 0.65 ? "#92400e" : "#7f1d1d" },
+                          { label: "Amount efficiency",    weight: "20%", raw: sc.amountScore,  display: `${Math.round(sc.amountScore * 100)}%`,
+                            color: sc.amountScore >= 0.85 ? "#064e3b" : sc.amountScore >= 0.55 ? "#92400e" : "#7f1d1d" },
+                        ].map(m => (
+                          <div key={m.label}>
+                            <div className="flex justify-between items-baseline mb-1.5">
+                              <div>
+                                <span className="display-font text-[13px] text-stone-700">{m.label}</span>
+                                <span className="mono-font text-[9px] text-stone-400 ml-1.5">({m.weight})</span>
+                              </div>
+                              <span className="mono-font text-xs font-medium text-stone-800">{m.display}</span>
+                            </div>
+                            <ScoreBar value={m.raw} color={m.color} />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Evidence factors */}
+                    {evidenceItems.length > 0 && (
+                      <div>
+                        <div className="mono-font text-[9px] tracking-widest text-stone-400 mb-2">EVIDENCE FACTORS</div>
+                        <div className="space-y-1.5">
+                          {evidenceItems.map(e => (
+                            <div key={e.label} className="flex items-start gap-2">
+                              {e.positive
+                                ? <CheckCircle className="w-3.5 h-3.5 text-emerald-700 shrink-0 mt-0.5" />
+                                : <XCircle    className="w-3.5 h-3.5 text-red-700 shrink-0 mt-0.5" />}
+                              <span className={`display-font text-[13px] leading-snug ${e.positive ? "text-emerald-800" : "text-red-800"}`}>{e.label}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Analyst note */}
+                    {sc.note && (
+                      <div>
+                        <div className="mono-font text-[9px] tracking-widest text-stone-400 mb-2">ANALYST NOTE</div>
+                        <p className="display-font text-stone-700 text-[13px] leading-relaxed border-l-2 border-stone-300 pl-3">{sc.note}</p>
+                      </div>
+                    )}
+
+                    {/* Financial summary */}
+                    <div className="border-t border-stone-200 pt-4 space-y-2">
+                      <div className="mono-font text-[9px] tracking-widest text-stone-400 mb-3">FINANCIAL SUMMARY</div>
+                      {[
+                        { label: "Face value",                val: `$${sc.amount.toLocaleString()}`,                                                                                   bold: false },
+                        { label: "Expected recovery",         val: `$${Math.round(sc.expectedRecovery).toLocaleString()} (${Math.round(sc.recoveryProb * 100)}% win)`,                 bold: false },
+                        { label: `Advance (${Math.round(advanceRate * 100)}%)`,    val: `$${Math.round(sc.expectedRecovery * advanceRate).toLocaleString()}`,                           bold: false },
+                        { label: "Projected net return",      val: `$${claimNet(sc).toLocaleString()}`,                                                                                bold: true  },
+                        { label: "Return on advance",         val: `${Math.round(((1 - advanceRate) / advanceRate) * 100)}%`,                                                          bold: true  },
+                      ].map(r => (
+                        <div key={r.label} className="flex justify-between">
+                          <span className="display-font text-[13px] text-stone-500">{r.label}</span>
+                          <span className={`mono-font text-xs ${r.bold ? 'text-emerald-800 font-medium' : 'text-stone-700'}`}>{r.val}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                  </div>
+                </div>
+              )
+            })()}
+          </div>
         </div>
-      </div>
 
-      {/* Disclaimer */}
-      <div className="mt-4 flex items-start gap-2 text-xs text-gray-400">
-        <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-        <span>Win-rate baselines approximate Visa issuer dispute outcome data and carry model uncertainty. Advance rates and portfolio grade reflect expected value — actual recovery depends on evidence quality and merchant behaviour at representment. Not legal or financial advice.</span>
-      </div>
+        {/* ── Methodology ── */}
+        <div className="section-divider" />
+        <div>
+          <div className="mono-font text-xs tracking-widest text-stone-500 mb-4">SCORING METHODOLOGY</div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {[
+              {
+                title: "Recovery probability (55%)",
+                body: "Reason code base win rate adjusted for AVS mismatch, 3DS absence, delivery confirmation, merchant acknowledgement, PIN verification, VFMP enrollment, documentation quality, prior claim history, and merchant chargeback ratio."
+              },
+              {
+                title: "Time value (25%)",
+                body: "Days remaining in the filing window. Claims inside 30 days carry a material discount; inside 15 days are severely penalized. Visa standard window is 120 days; fraud codes may extend further in some jurisdictions."
+              },
+              {
+                title: "Amount efficiency (20%)",
+                body: "Funder overhead is roughly fixed per claim. Sub-$100 claims rarely justify the cost. Amounts over $2,000 introduce concentration risk. Sweet spot is $200–$2,000. Advance rates: A 65% / B 55% / C 44% / D 30% of expected recovery."
+              }
+            ].map(m => (
+              <div key={m.title}>
+                <div className="mono-font text-[10px] tracking-widest text-stone-600 mb-2">{m.title.toUpperCase()}</div>
+                <p className="display-font text-stone-600 text-[14px] leading-relaxed">{m.body}</p>
+              </div>
+            ))}
+          </div>
+        </div>
 
-      {/* Footer */}
-      <div className="mt-6 pt-4 border-t border-gray-100 flex items-center justify-between text-xs text-gray-300">
-        <span>Built by <a href="https://www.linkedin.com/in/adeoti-fashokun-284b66164/" target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-gray-600 transition-colors">Adeoti Fashokun</a> — fraud, risk &amp; compliance · Toronto</span>
-        <a href="https://github.com/i0date/dispute-funding-assessor" target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-gray-600 transition-colors flex items-center gap-1">
-          <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-current" aria-hidden="true"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.3 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61-.546-1.385-1.335-1.755-1.335-1.755-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 21.795 24 17.295 24 12c0-6.63-5.37-12-12-12z"/></svg>
-          View source
-        </a>
+        {/* ── Disclaimer ── */}
+        <div className="section-divider" />
+        <div className="flex items-start gap-3 border border-amber-700 bg-amber-50 p-4">
+          <AlertTriangle className="w-4 h-4 text-amber-800 shrink-0 mt-0.5" />
+          <p className="display-font text-stone-800 text-[13px] leading-relaxed">
+            Win-rate baselines approximate Visa issuer dispute outcome data and carry model uncertainty. Advance rates and portfolio grade reflect expected value — actual recovery depends on evidence quality and merchant behaviour at representment. Not legal or financial advice.
+          </p>
+        </div>
+
+        {/* ── Footer ── */}
+        <div className="section-divider" />
+        <div className="flex flex-col sm:flex-row sm:items-baseline justify-between text-stone-600 gap-2">
+          <div className="mono-font text-xs tracking-widest">BUILT BY ADEOTI FASHOKUN — RISK &amp; TRUST OPERATIONS</div>
+          <div className="display-font italic text-sm">"The portfolio tells you what the individual case cannot."</div>
+        </div>
+
       </div>
     </div>
   )
