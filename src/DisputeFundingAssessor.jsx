@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from "react"
+import { useState, useMemo, useRef, useEffect } from "react"
 import { Upload, Download, ChevronDown, ChevronUp, AlertTriangle, CheckCircle, XCircle, Plus, X } from "lucide-react"
 
 // ─── Reason code base win rates (issuer perspective) ─────────────────────────
@@ -337,16 +337,54 @@ export default function DisputeFundingAssessor() {
   const [uploadedClaims, setUploaded]       = useState([])
   const [parseErrors, setParseErrors]       = useState([])
   const [expandedMobile, setExpandedMobile] = useState(null)
-  const [manualClaims, setManualClaims]     = useState([])
-  const [excludedIds, setExcludedIds]       = useState(new Set())
+  const [manualClaims, setManualClaims]     = useState(() => {
+    try { return JSON.parse(localStorage.getItem('dfa_manual_claims') || '[]') } catch { return [] }
+  })
+  useEffect(() => {
+    try { localStorage.setItem('dfa_manual_claims', JSON.stringify(manualClaims)) } catch {}
+  }, [manualClaims])
+
+  const [excludedIds, setExcludedIds]       = useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem('dfa_excluded_ids') || '[]')) } catch { return new Set() }
+  })
+  useEffect(() => {
+    try { localStorage.setItem('dfa_excluded_ids', JSON.stringify([...excludedIds])) } catch {}
+  }, [excludedIds])
+
   const [gradeFilter, setGradeFilter]       = useState("all")
   const [showAddForm, setShowAddForm]       = useState(false)
   const [draft, setDraft]                   = useState({ ...MANUAL_DEFAULTS })
-  // Investor controls
-  const [advanceOverride, setAdvanceOverride] = useState(null)   // null = grade-based default
-  const [recourseType, setRecourseType]       = useState("nonrecourse")
-  const [refundPct, setRefundPct]             = useState(0.20)
-  const [holdingDays, setHoldingDays]         = useState(90)
+  // Investor controls — persisted so settings survive refresh
+  const [advanceOverride, setAdvanceOverride] = useState(() => {
+    try { const v = localStorage.getItem('dfa_advance_override'); return v !== null ? parseFloat(v) : null } catch { return null }
+  })
+  useEffect(() => {
+    try {
+      if (advanceOverride !== null) localStorage.setItem('dfa_advance_override', String(advanceOverride))
+      else localStorage.removeItem('dfa_advance_override')
+    } catch {}
+  }, [advanceOverride])
+
+  const [recourseType, setRecourseType]       = useState(() => {
+    try { return localStorage.getItem('dfa_recourse_type') || 'nonrecourse' } catch { return 'nonrecourse' }
+  })
+  useEffect(() => {
+    try { localStorage.setItem('dfa_recourse_type', recourseType) } catch {}
+  }, [recourseType])
+
+  const [refundPct, setRefundPct]             = useState(() => {
+    try { return parseFloat(localStorage.getItem('dfa_refund_pct') || '0.20') } catch { return 0.20 }
+  })
+  useEffect(() => {
+    try { localStorage.setItem('dfa_refund_pct', String(refundPct)) } catch {}
+  }, [refundPct])
+
+  const [holdingDays, setHoldingDays]         = useState(() => {
+    try { return parseInt(localStorage.getItem('dfa_holding_days') || '90', 10) } catch { return 90 }
+  })
+  useEffect(() => {
+    try { localStorage.setItem('dfa_holding_days', String(holdingDays)) } catch {}
+  }, [holdingDays])
   const fileRef       = useRef(null)
   const manualCounter = useRef(1)
 
