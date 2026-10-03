@@ -3,34 +3,73 @@ import { Upload, Download, ChevronDown, ChevronUp, AlertTriangle, CheckCircle, X
 
 // ─── Reason code base win rates (issuer perspective) ─────────────────────────
 const BASE_WIN_RATES = {
-  "10.1": 0.85, "10.2": 0.48, "10.4": 0.76, "10.5": 0.93,
-  "13.1": 0.41, "13.3": 0.30, "13.5": 0.57, "13.6": 0.68, "13.7": 0.44,
-  "4837": 0.78, "4840": 0.72, "4849": 0.65, "4863": 0.73,
-  "4870": 0.87, "4871": 0.81,
-  "4841": 0.48, "4853": 0.33, "4855": 0.44, "4859": 0.46,
-  "4860": 0.70, "4854": 0.38,
+  // Visa Fraud (10.x)
+  "10.1": 0.85, "10.2": 0.48, "10.3": 0.72, "10.4": 0.76, "10.5": 0.93,
+  // Visa Authorization (11.x) — near-automatic wins for issuer
+  "11.1": 0.88, "11.2": 0.82, "11.3": 0.75,
+  // Visa Processing Errors (12.x) — strong mechanical wins
+  "12.1": 0.80, "12.2": 0.85, "12.3": 0.82, "12.4": 0.79,
+  "12.5": 0.90, "12.6": 0.87, "12.6.1": 0.87, "12.6.2": 0.85, "12.7": 0.78,
+  // Visa Consumer Disputes (13.x)
+  "13.1": 0.41, "13.2": 0.55, "13.3": 0.30, "13.4": 0.35,
+  "13.5": 0.57, "13.6": 0.68, "13.7": 0.44, "13.8": 0.72, "13.9": 0.80,
+  // MC Fraud (48xx)
+  "4837": 0.78, "4840": 0.72, "4849": 0.65, "4863": 0.73, "4870": 0.87, "4871": 0.81,
+  // MC Authorization (48xx)
+  "4808": 0.83, "4812": 0.80, "4847": 0.77,
+  // MC Processing Errors (48xx)
+  "4831": 0.85, "4834": 0.88, "4835": 0.74, "4842": 0.80, "4846": 0.87,
+  // MC Consumer Disputes (48xx)
+  "4841": 0.48, "4850": 0.75, "4853": 0.33, "4854": 0.38,
+  "4855": 0.44, "4859": 0.46, "4860": 0.70, "4999": 0.72,
 }
 
 const CODE_LABELS = {
-  "10.1": "EMV liability shift",          "10.2": "No cardholder auth (CP)",
-  "10.4": "CNP fraud — other",            "10.5": "Visa fraud monitoring program",
-  "13.1": "Merchandise not received",     "13.3": "Not as described",
-  "13.5": "Misrepresentation",            "13.6": "Credit not processed",
-  "13.7": "Cancelled merchandise/services",
-  "4837": "No cardholder authorization",  "4840": "Fraudulent processing",
-  "4849": "Questionable merchant activity","4853": "Defective / not as described",
-  "4854": "Cardholder dispute — NEC",     "4855": "Goods or services not provided",
-  "4859": "Services not rendered",        "4860": "Credit not processed",
-  "4863": "Cardholder does not recognize","4870": "Chip liability shift",
-  "4871": "Chip/PIN liability shift",     "4841": "Cancelled recurring transaction",
+  // Visa Fraud
+  "10.1": "EMV Counterfeit Fraud",       "10.2": "EMV Lost/Stolen Fraud",
+  "10.3": "Card-Present Fraud",           "10.4": "Card-Absent (CNP) Fraud",
+  "10.5": "Visa Fraud Monitoring Program",
+  // Visa Authorization
+  "11.1": "Card Recovery Bulletin",       "11.2": "Declined Authorization",
+  "11.3": "No Authorization",
+  // Visa Processing Errors
+  "12.1": "Late Presentment",             "12.2": "Incorrect Transaction Code",
+  "12.3": "Incorrect Currency",           "12.4": "Incorrect Account Number",
+  "12.5": "Incorrect Amount",             "12.6": "Duplicate / Paid by Other Means",
+  "12.6.1": "Duplicate Processing",       "12.6.2": "Paid by Other Means",
+  "12.7": "Invalid Data",
+  // Visa Consumer Disputes
+  "13.1": "Merchandise Not Received",     "13.2": "Cancelled Recurring",
+  "13.3": "Not as Described / Defective", "13.4": "Counterfeit Merchandise",
+  "13.5": "Misrepresentation",            "13.6": "Credit Not Processed",
+  "13.7": "Cancelled Merchandise",        "13.8": "Original Credit Not Accepted",
+  "13.9": "Non-Receipt of Cash/Load",
+  // MC Fraud
+  "4837": "No Cardholder Authorization",  "4840": "Fraudulent Processing",
+  "4849": "Questionable Merchant Activity","4863": "Cardholder Does Not Recognize",
+  "4870": "Chip Liability Shift",         "4871": "Chip/PIN Liability Shift",
+  // MC Authorization
+  "4808": "Authorization Chargeback",     "4812": "Account Not on File",
+  "4847": "Authorization Not Obtained",
+  // MC Processing Errors
+  "4831": "Transaction Amount Differs",   "4834": "Duplicate Processing",
+  "4835": "Card Not Valid or Expired",    "4842": "Late Presentment",
+  "4846": "Incorrect Currency",
+  // MC Consumer Disputes
+  "4841": "Cancelled Recurring/Digital Goods","4850": "Installment Billing Dispute",
+  "4853": "Defective / Not as Described", "4854": "Cardholder Dispute — NEC",
+  "4855": "Goods or Services Not Provided","4859": "Services Not Rendered",
+  "4860": "Credit Not Processed",         "4999": "Domestic Chargeback",
 }
 
 function detectNetwork(code) {
   if (!code) return "—"
-  if (code.startsWith("10") || code.startsWith("13")) return "Visa"
-  if (code.startsWith("48")) return "Mastercard"
+  const c = String(code)
+  if (c.startsWith("10") || c.startsWith("11") || c.startsWith("12") || c.startsWith("13")) return "Visa"
+  if (c.startsWith("48") || c === "4999") return "Mastercard"
   return "—"
 }
+
 
 // ─── Sample portfolio (~$100k face, 20 claims, Visa + MC) ─────────────────────
 const CLAIMS_DATA = [
@@ -58,24 +97,38 @@ const CLAIMS_DATA = [
 
 // ─── Scoring model ────────────────────────────────────────────────────────────
 function computeRecoveryProb(c) {
-  let p = BASE_WIN_RATES[c.code] ?? 0.50
-  const isFraud = c.code.startsWith("10") || ["4837","4840","4849","4863","4870","4871"].includes(c.code)
-  if (isFraud) {
+  let p = BASE_WIN_RATES[c.code] != null ? BASE_WIN_RATES[c.code] : 0.50
+  const code = String(c.code)
+
+  // Authorization codes (11.x, 4808, 4812, 4847) — largely mechanical, few signal adjustments
+  const isAuth = code.startsWith("11") || ["4808","4812","4847"].includes(code)
+  // Processing error codes (12.x, 4831, 4834, 4835, 4842, 4846) — mechanical wins, no behavioral signals
+  const isProcessingError = code.startsWith("12") || ["4831","4834","4835","4842","4846"].includes(code)
+  // Fraud codes
+  const isFraud = code.startsWith("10") || ["4837","4840","4849","4863","4870","4871"].includes(code)
+
+  if (isAuth || isProcessingError) {
+    // Mechanical wins — time window is the main risk factor, signal adjustments minimal
+    if (c.priorClaims > 2) p -= 0.05  // unusual volume is mild risk
+    // No other behavioral adjustments — these live or die on documentation alone
+  } else if (isFraud) {
     if (c.avsMismatch) p += 0.07
     if (c.no3DS)       p += 0.05
     if (c.isVFMP)      p = Math.min(p + 0.15, 0.96)
-    if (c.pinVerified) p -= 0.28
+    if (c.pinVerified) p -= 0.28  // PIN-verified CNP = near-certain loss
     if      (c.merchantCBR >= 2.0) p += 0.06
     else if (c.merchantCBR >= 1.0) p += 0.03
     else if (c.merchantCBR <  0.3) p -= 0.04
+    p -= c.priorClaims * 0.07
   } else {
+    // Consumer disputes (13.x, 4841, 4850, 4853, 4854, 4855, 4859, 4860, 4999)
     if (c.deliveryConf) p -= 0.22
     if (c.merchantAck)  p += 0.18
     if (c.strongDocs)   p += 0.12
     if      (c.merchantCBR >= 1.5) p += 0.05
     else if (c.merchantCBR <  0.3) p -= 0.05
+    p -= c.priorClaims * 0.07
   }
-  p -= c.priorClaims * 0.07
   return parseFloat(Math.max(0.05, Math.min(0.96, p)).toFixed(2))
 }
 
@@ -529,6 +582,13 @@ export default function DisputeFundingAssessor() {
           <p className="display-font text-stone-700 mt-4 max-w-2xl" style={{ fontSize:"clamp(14px,1.8vw,17px)", lineHeight:"1.6" }}>
             Payment disputes as an asset class. Upload a portfolio of Visa or Mastercard claims and the assessor underwrites each receivable — scoring fundability, modelling probability-weighted recovery, and recommending an advance rate. Built for issuers, servicers, and dispute funders.
           </p>
+          <div className="flex items-center flex-wrap gap-x-3 gap-y-1 mt-5" style={{ borderTop:"1px solid #D4CCBC", paddingTop:"14px" }}>
+            <span className="mono-font text-[9px] tracking-widest text-stone-400">DISPUTE SUITE</span>
+            <span className="mono-font text-[9px] text-stone-300">·</span>
+            <span className="mono-font text-[9px] tracking-widest text-stone-500">THE DISPUTE DESK — run case intake, then export pending claims as CSV to upload here</span>
+            <span className="mono-font text-[9px] text-stone-300">·</span>
+            <span className="mono-font text-[9px] tracking-widest text-stone-500">TRIAGE — first-touch complaint intake and classification</span>
+          </div>
         </div>
 
         {/* ── Step 01 — Portfolio Upload ── */}
