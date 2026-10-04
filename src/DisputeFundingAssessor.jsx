@@ -582,13 +582,6 @@ export default function DisputeFundingAssessor() {
           <p className="display-font text-stone-700 mt-4 max-w-2xl" style={{ fontSize:"clamp(14px,1.8vw,17px)", lineHeight:"1.6" }}>
             Payment disputes as an asset class. Upload a portfolio of Visa or Mastercard claims and the assessor underwrites each receivable — scoring fundability, modelling probability-weighted recovery, and recommending an advance rate. Built for issuers, servicers, and dispute funders.
           </p>
-          <div className="flex items-center flex-wrap gap-x-3 gap-y-1 mt-5" style={{ borderTop:"1px solid #D4CCBC", paddingTop:"14px" }}>
-            <span className="mono-font text-[9px] tracking-widest text-stone-400">DISPUTE SUITE</span>
-            <span className="mono-font text-[9px] text-stone-300">·</span>
-            <span className="mono-font text-[9px] tracking-widest text-stone-500">THE DISPUTE DESK — run case intake, then export pending claims as CSV to upload here</span>
-            <span className="mono-font text-[9px] text-stone-300">·</span>
-            <span className="mono-font text-[9px] tracking-widest text-stone-500">TRIAGE — first-touch complaint intake and classification</span>
-          </div>
         </div>
 
         {/* ── Step 01 — Portfolio Upload ── */}
